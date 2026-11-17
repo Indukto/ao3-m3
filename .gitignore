@@ -1,0 +1,12 @@
+*.iml
+.gradle/
+.kotlin/
+.idea/
+build/
+*.log
+.freebuff/
+captures/
+.externalNativeBuild
+.cxx
+local.properties
+*.hprof
