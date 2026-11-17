@@ -14,6 +14,16 @@ AO3 is slow or you are offline.
 > Archive is an unofficial fan project and is not affiliated with or endorsed by the Organization
 > for Transformative Works (OTW) or AO3.
 
+## Screenshots
+
+| Discover | Work details | Reader |
+|:---:|:---:|:---:|
+| ![Discover](docs/screenshots/discover.png) | ![Work details](docs/screenshots/work.png) | ![Reader](docs/screenshots/reader.png) |
+| **Search filters** | **Settings** | |
+| ![Search filters](docs/screenshots/search.png) | ![Settings](docs/screenshots/settings.png) | |
+
+Captured on a Pixel 7 Pro with Material You dynamic colour.
+
 ## Features
 
 - **Discover** — pick up where you left off, browse popular works, and see updates from your
