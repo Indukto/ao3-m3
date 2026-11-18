@@ -1,6 +1,6 @@
 [versions]
 # 9.4.0 is the newest AGP supported by the installed Android Studio; newer versions fail IDE sync.
-agp = "9.4.0"
+agp = "9.4.1"
 # AGP 9 has built-in Kotlin; this version only drives the Compose/serialization compiler plugins.
 kotlin = "2.4.21"
 ksp = "2.3.13"

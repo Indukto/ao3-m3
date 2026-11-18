@@ -56,10 +56,30 @@ class WorkRepository @Inject constructor(
     suspend fun refreshWork(workId: Long): Result<WorkWithChapters> = runCatching {
         val document = client.getHtml(Ao3Urls.workPage(workId))
         val parsed = WorkParser.parse(document, workId)
+        val chapters = if (parsed.hasUsableIndex()) {
+            parsed.chapters
+        } else {
+            chapterIndex(workId) ?: parsed.chapters
+        }
         dao.upsertWork(parsed.work.toEntity())
-        dao.upsertChapters(parsed.chapters.map { it.toEntity() })
-        parsed
+        dao.upsertChapters(chapters.map { it.toEntity() })
+        parsed.copy(chapters = chapters)
     }
+
+    /**
+     * A chaptered work whose page showed only the invented chapter-1 row still needs its real
+     * index; AO3 serves that on its own page at /works/:id/navigate.
+     */
+    private fun WorkWithChapters.hasUsableIndex(): Boolean =
+        chapters.isNotEmpty() && !(
+            (work.chaptersTotal ?: 1) > 1 &&
+                chapters.size == 1 &&
+                chapters.single().id == work.id
+            )
+
+    private suspend fun chapterIndex(workId: Long): List<Chapter>? = runCatching {
+        WorkParser.parseChapterIndex(client.getHtml(Ao3Urls.navigate(workId)), workId)
+    }.getOrNull()?.takeIf { it.isNotEmpty() }
 
     /**
      * Loads one chapter's text, from disk when possible. One-shots live on the work page itself,
@@ -91,6 +111,10 @@ class WorkRepository @Inject constructor(
     }
 
     fun browse(query: WorkQuery): PagingSource<Int, Work> = BrowsePagingSource(this, query)
+
+    /** A previously cached page, so a list can paint before the archive answers. */
+    suspend fun cachedPage(query: WorkQuery): List<Work> =
+        dao.cachedPage(query.cacheKey()).map { it.toModel() }
 
     suspend fun loadPage(query: WorkQuery): PageResult {
         val cacheKey = query.cacheKey()

@@ -18,6 +18,12 @@ object Ao3Urls {
     fun chapter(workId: Long, chapterId: Long): List<String> =
         listOf("works", workId.toString(), "chapters", chapterId.toString())
 
+    /** AO3's full-page chapter index, used when a work page renders no chapter list. */
+    fun navigate(workId: Long): List<String> = work(workId) + "navigate"
+
+    /** The create-bookmark form page for a work. */
+    fun newBookmark(workId: Long): List<String> = work(workId) + listOf("bookmarks", "new")
+
     /** AO3's browse index, used for Discover's popular list. */
     fun browse(): List<String> = listOf("works")
 

@@ -28,6 +28,7 @@ class ParserTest {
         assertEquals("A Long Winter of Small Kindnesses", first.title)
         assertEquals(listOf("stormandsky"), first.authors)
         assertEquals("Teen And Up Audiences", first.rating)
+        assertEquals(listOf("F/M"), first.categories)
         assertEquals(12345, first.words)
         assertEquals(3, first.chaptersPublished)
         assertEquals(12, first.chaptersTotal)

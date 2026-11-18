@@ -88,12 +88,6 @@ fun SearchScreen(
             TopAppBar(
                 title = { Text("Search") },
                 actions = {
-                    IconButton(
-                        onClick = viewModel::saveCurrentSearch,
-                        enabled = query.query.isNotBlank(),
-                    ) {
-                        Icon(Ao3Icons.BookmarkOutline, contentDescription = "Save this search")
-                    }
                     IconButton(onClick = { savedOpen = true }) {
                         Icon(Ao3Icons.Bookmark, contentDescription = "Saved searches")
                     }
@@ -243,6 +237,8 @@ fun SearchScreen(
         ModalBottomSheet(onDismissRequest = { savedOpen = false }) {
             SavedSearchesSheet(
                 savedSearches = savedSearches,
+                currentQuery = text,
+                onSave = { viewModel.saveSearch(text) },
                 onSelect = { saved ->
                     text = saved
                     viewModel.submit(saved)
@@ -277,21 +273,26 @@ private fun AppendError(message: String, onRetry: () -> Unit) {
 @Composable
 private fun SavedSearchesSheet(
     savedSearches: List<String>,
+    currentQuery: String,
     onSelect: (String) -> Unit,
     onRemove: (String) -> Unit,
+    onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     SheetLayout(
         title = "Saved searches",
         footer = {
+            TextButton(onClick = onSave, enabled = currentQuery.isNotBlank()) {
+                Text("Save current search")
+            }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = onDismiss) { Text("Close") }
         },
     ) {
         if (savedSearches.isEmpty()) {
             Text(
-                text = "No saved searches yet. Search for something, then use the bookmark icon " +
-                    "in the top bar.",
+                text = "No saved searches yet. Type a search, then use \"Save current search\" " +
+                    "here.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = Spacing.lg),

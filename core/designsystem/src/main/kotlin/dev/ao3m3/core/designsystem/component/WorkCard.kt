@@ -32,9 +32,13 @@ import java.time.format.DateTimeFormatter
 
 private val ShortDate: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
 
+/** How many category/relationship pills a blurb shows before collapsing into "+N". */
+private const val MAX_CONTENT_TAGS = 3
+
 /**
- * A work blurb: title, attribution, a three-line summary, at most three tags and one stats line.
- * No card chrome — the whitespace between rows is the separator.
+ * A work blurb: title, attribution, the content classification (rating, category, relationships),
+ * a three-line summary, at most three additional tags and one stats line. No card chrome — the
+ * whitespace between rows is the separator.
  */
 @Composable
 fun WorkCard(
@@ -79,6 +83,17 @@ fun WorkCard(
             overflow = TextOverflow.Ellipsis,
         )
 
+        val rating = work.rating?.takeIf { it.isNotBlank() }
+        val contentTags = contentTags(work)
+        if (rating != null || contentTags.isNotEmpty()) {
+            Spacer(Modifier.height(Spacing.sm))
+            ContentTagRow(
+                rating = rating,
+                tags = contentTags,
+                overflowCount = (contentTags.size - MAX_CONTENT_TAGS).coerceAtLeast(0),
+            )
+        }
+
         if (showSummary && work.summary.isNotBlank()) {
             Spacer(Modifier.height(Spacing.sm))
             Text(
@@ -90,10 +105,11 @@ fun WorkCard(
             )
         }
 
-        val tags = (work.relationships + work.additionalTags).distinct().take(maxTags)
+        val additionalTags = work.additionalTags.distinct()
+        val tags = additionalTags.take(maxTags)
         if (tags.isNotEmpty()) {
             Spacer(Modifier.height(Spacing.md))
-            TagRow(tags = tags, overflowCount = (work.tagCount - tags.size).coerceAtLeast(0))
+            TagRow(tags = tags, overflowCount = (additionalTags.size - tags.size).coerceAtLeast(0))
         }
 
         Spacer(Modifier.height(Spacing.md))
@@ -114,6 +130,30 @@ fun WorkCard(
                 )
             }
         }
+    }
+}
+
+/**
+ * The classification a reader checks before opening a work: rating, then AO3's categories and
+ * relationships. The rating is tinted so it reads differently from a story tag.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ContentTagRow(
+    rating: String?,
+    tags: List<String>,
+    modifier: Modifier = Modifier,
+    overflowCount: Int = 0,
+) {
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        maxLines = 1,
+    ) {
+        rating?.let { RatingPill(it) }
+        tags.take(MAX_CONTENT_TAGS).forEach { TagPill(text = it) }
+        if (overflowCount > 0) TagPill(text = "+$overflowCount")
     }
 }
 
@@ -163,10 +203,43 @@ fun TagPill(
     }
 }
 
+/** Categories and relationships, in AO3's display order, without duplicates. */
+private fun contentTags(work: Work): List<String> =
+    (work.categories + work.relationships).distinct()
+
 /** "by author · Fandom" */
 private fun bypassLine(work: Work): String = buildString {
     append("by ").append(work.authorLabel)
     work.fandoms.firstOrNull()?.let { append(" · ").append(it) }
+}
+
+/**
+ * A rating pill. Mature and Explicit are 18+ content, so they get the error colour with
+ * full-contrast text instead of the neutral tint used for the other ratings.
+ */
+@Composable
+fun RatingPill(text: String, modifier: Modifier = Modifier) {
+    val mature = isMatureRating(text)
+    TagPill(
+        text = text,
+        modifier = modifier,
+        color = if (mature) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+        contentColor = if (mature) {
+            MaterialTheme.colorScheme.onError
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        },
+    )
+}
+
+/** AO3's 18+ ratings: Mature and Explicit. */
+fun isMatureRating(rating: String?): Boolean {
+    val value = rating?.lowercase().orEmpty()
+    return "mature" in value || "explicit" in value
 }
 
 /** "12,345 words · 1.2k kudos · updated 2 Mar" */
@@ -199,6 +272,8 @@ private fun WorkCardPreview() {
                     title = "A Long Winter of Small Kindnesses",
                     authors = listOf("stormandsky"),
                     summary = "Snowed in at a cottage, two strangers learn to share a fire.",
+                    rating = "Teen And Up Audiences",
+                    categories = listOf("F/M"),
                     fandoms = listOf("Original Work"),
                     relationships = listOf("A/B"),
                     additionalTags = listOf("Fluff", "Slow Burn"),

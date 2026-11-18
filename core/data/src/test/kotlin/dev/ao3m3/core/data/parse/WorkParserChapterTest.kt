@@ -52,6 +52,33 @@ class WorkParserChapterTest {
     }
 
     @Test
+    fun `the work page chapter select provides the table of contents`() {
+        val parsed = WorkParser.parseChapters(
+            doc(
+                """
+                <div id="chapter_index" class="chapter index group">
+                  <ol class="chapter index group">
+                    <li>
+                      <form action="/works/1234567/chapters" method="get">
+                        <select name="selected_id">
+                          <option value="222">2. Snowfall</option>
+                          <option value="111">1. The Cottage</option>
+                        </select>
+                      </form>
+                    </li>
+                  </ol>
+                </div>
+                """.trimIndent(),
+            ),
+            work(),
+        )
+
+        assertEquals(listOf(111L, 222L), parsed.map { it.id })
+        assertEquals(listOf(1, 2), parsed.map { it.index })
+        assertEquals("The Cottage", parsed.first().title)
+    }
+
+    @Test
     fun `duplicate table of contents entries collapse to one chapter`() {
         val parsed = WorkParser.parseChapters(
             doc(

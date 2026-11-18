@@ -14,12 +14,19 @@ object LibraryParser {
 
     fun hasNextPage(doc: Document): Boolean = BlurbParser.hasNextPage(doc)
 
-    /** AO3 shows the username in the masthead; used to cache per-account library URLs. */
-    fun parseUserName(doc: Document): String? =
-        doc.select("#header .primary .dropdown a[href^=/users/]")
-            .firstOrNull()
-            ?.attr("href")
-            ?.substringAfter("/users/")
-            ?.substringBefore("/")
-            ?.takeIf { it.isNotBlank() }
+    /**
+     * AO3 shows the username in the masthead; used to cache per-account library URLs and as a
+     * signed-in probe (guests are offered `/users/login`, which is not a username).
+     */
+    fun parseUserName(doc: Document): String? {
+        val link = doc.select("#header .primary .dropdown a[href^=/users/]").firstOrNull()
+            ?: doc.select("#header a[href^=/users/]").firstOrNull {
+                it.text().trim().startsWith("Hi,", ignoreCase = true)
+            }
+            ?: return null
+        return link.attr("href")
+            .substringAfter("/users/")
+            .substringBefore("/")
+            .takeIf { it.isNotBlank() && !it.equals("login", ignoreCase = true) }
+    }
 }

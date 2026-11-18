@@ -39,7 +39,7 @@ object BlurbParser {
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() },
             warnings = element.select(Ao3Selectors.BLURB_WARNINGS).texts(),
-            categories = element.select(Ao3Selectors.BLURB_CATEGORIES).texts(),
+            categories = categories(element),
             fandoms = element.select(Ao3Selectors.BLURB_FANDOMS).texts(),
             relationships = element.select(Ao3Selectors.BLURB_RELATIONSHIPS).texts(),
             characters = element.select(Ao3Selectors.BLURB_CHARACTERS).texts(),
@@ -65,10 +65,35 @@ object BlurbParser {
         doc.select(Ao3Selectors.PAGINATION_LINKS)
             .any { it.text().trim().equals("Next", ignoreCase = true) }
 
+    /** Category symbols first (the only place browsable blurbs carry them), tag list as fallback. */
+    private fun categories(element: Element): List<String> {
+        val symbols = element
+            .select("${Ao3Selectors.BLURB_REQUIRED_TAGS} ${Ao3Selectors.BLURB_CATEGORY_SYMBOLS}")
+            .mapNotNull { symbolLabel(it) }
+        val tags = element.select(Ao3Selectors.BLURB_CATEGORIES).texts()
+        return (symbols + tags).distinct()
+    }
+
+    /** "F/M" from the symbol's title attribute, its `.text` child, or the class suffix. */
+    private fun symbolLabel(symbol: Element): String? {
+        symbol.attr("title").trim().takeIf { it.isNotEmpty() }?.let { return it }
+        symbol.select(".text").firstOrNull()?.text()?.trim()
+            ?.takeIf { it.isNotEmpty() }?.let { return it }
+        val suffix = symbol.className()
+            .split(' ')
+            .firstOrNull { it.startsWith(CATEGORY_PREFIX) }
+            ?.removePrefix(CATEGORY_PREFIX)
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return suffix.split('-').joinToString("/") { part -> part.replaceFirstChar(Char::uppercase) }
+    }
+
     private fun authors(element: Element): List<String> =
         Ao3Selectors.BLURB_AUTHOR
             .firstNotNullOfOrNull { selector -> element.select(selector).texts().ifEmpty { null } }
             .orEmpty()
+
+    private const val CATEGORY_PREFIX = "category-"
 
     private fun regexWorkId(raw: String?): Long? {
         if (raw.isNullOrBlank()) return null

@@ -73,10 +73,10 @@ class SearchViewModel @Inject constructor(
         _query.update { it.copy(filters = SearchFilters(), page = 1) }
     }
 
-    fun saveCurrentSearch() {
-        val term = _query.value.query
-        if (term.isBlank()) return
-        viewModelScope.launch { session.saveSearch(term) }
+    fun saveSearch(term: String) {
+        val value = term.trim()
+        if (value.isEmpty()) return
+        viewModelScope.launch { session.saveSearch(value) }
     }
 
     fun removeSavedSearch(term: String) {

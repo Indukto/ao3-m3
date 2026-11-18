@@ -83,6 +83,12 @@ class ReaderViewModel @Inject constructor(
                 }
             }
 
+            // A chapter index we could not read must never block reading: the work page itself
+            // still serves chapter one.
+            if (chapters.isEmpty()) {
+                chapters = listOf(Chapter(id = id, workId = id, index = 1, title = work.title))
+            }
+
             val start = resolveReadingStart(
                 chapters = chapters,
                 startChapterId = startChapterId,

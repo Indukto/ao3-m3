@@ -50,13 +50,21 @@ class DiscoverViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
             val resumable = works.recentProgress(limit = 6)
-            _state.value = _state.value.copy(resumable = resumable, loading = false)
+            // Cached page one paints immediately; the request below only revalidates it. Keeping
+            // `loading` true until that request returns is what shows the skeleton instead of an
+            // empty "nothing to show" screen while AO3 takes its time.
+            val cached = if (force) emptyList() else works.cachedPage(popularQuery())
+            _state.value = _state.value.copy(
+                resumable = resumable,
+                popular = cached.ifEmpty { _state.value.popular },
+            )
 
             val result = runCatching { works.loadPage(popularQuery()) }
             val failure = result.exceptionOrNull()
             val page = result.getOrNull()
             _state.value = _state.value.copy(
                 popular = page?.works?.take(8) ?: _state.value.popular,
+                loading = false,
                 maintenance = failure is Ao3Exception.Maintenance,
                 error = when {
                     page != null -> null

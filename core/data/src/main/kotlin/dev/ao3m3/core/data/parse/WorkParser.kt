@@ -66,29 +66,51 @@ object WorkParser {
     }
 
     fun parseChapters(doc: Document, work: Work): List<Chapter> {
-        val links = doc.select(Ao3Selectors.WORK_CHAPTER_TOC.first())
-        val chapters = links.mapIndexedNotNull { position, link ->
-            val chapterId = Regex("/chapters/(\\d+)")
-                .find(link.attr("href"))
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.toLongOrNull()
-                ?: return@mapIndexedNotNull null
-            val label = link.text().trim()
-            val index = Regex("^(\\d+)").find(label)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: (position + 1)
-            Chapter(
-                id = chapterId,
-                workId = work.id,
-                index = index,
-                title = label.replace(Regex("^\\s*\\d+\\.?\\s*"), "").trim()
-                    .takeIf { it.isNotEmpty() },
-            )
-        }.distinctBy { it.id }.sortedBy { it.index }
-
+        val chapters = chapterLinks(doc, work.id)
         if (chapters.isNotEmpty()) return chapters
-
+        // A chaptered work whose page showed no index (AO3 can render the whole work on one page)
+        // is not a one-shot: callers fetch the full-page index instead of inventing chapter 1.
+        if ((work.chaptersTotal ?: 1) > 1) return emptyList()
         return listOf(Chapter(id = work.id, workId = work.id, index = 1, title = work.title))
+    }
+
+    /** Chapters from AO3's full-page index at /works/:id/navigate. */
+    fun parseChapterIndex(doc: Document, workId: Long): List<Chapter> = chapterLinks(doc, workId)
+
+    private fun chapterLinks(doc: Document, workId: Long): List<Chapter> {
+        val fromSelect = doc.select(Ao3Selectors.WORK_CHAPTER_OPTIONS)
+            .mapIndexedNotNull { position, option ->
+                val chapterId = option.attr("value").trim().toLongOrNull()
+                    ?: return@mapIndexedNotNull null
+                chapter(chapterId, workId, option.text().trim(), position)
+            }
+        val chapters = if (fromSelect.isNotEmpty()) {
+            fromSelect
+        } else {
+            doc.select(Ao3Selectors.WORK_CHAPTER_TOC.joinToString(", "))
+                .mapIndexedNotNull { position, link ->
+                    val chapterId = Regex("/chapters/(\\d+)")
+                        .find(link.attr("href"))
+                        ?.groupValues
+                        ?.getOrNull(1)
+                        ?.toLongOrNull()
+                        ?: return@mapIndexedNotNull null
+                    chapter(chapterId, workId, link.text().trim(), position)
+                }
+        }
+        return chapters.distinctBy { it.id }.sortedBy { it.index }
+    }
+
+    private fun chapter(chapterId: Long, workId: Long, label: String, position: Int): Chapter {
+        val index = Regex("^(\\d+)").find(label)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: (position + 1)
+        return Chapter(
+            id = chapterId,
+            workId = workId,
+            index = index,
+            title = label.replace(Regex("^\\s*\\d+\\.?\\s*"), "").trim()
+                .takeIf { it.isNotEmpty() },
+        )
     }
 
     /** Extracts one chapter's HTML body. Works for both work and chapter pages. */

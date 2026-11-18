@@ -148,6 +148,13 @@ fun DiscoverScreen(
             }
 
             if (state.loading && state.popular.isEmpty()) {
+                item {
+                    SectionTitle(
+                        title = "Popular this week",
+                        actionLabel = "Search",
+                        onAction = onOpenSearch,
+                    )
+                }
                 item { SkeletonList(rows = 4) }
             } else {
                 if (state.popular.isNotEmpty()) {
@@ -157,6 +164,18 @@ fun DiscoverScreen(
                             actionLabel = "Search",
                             onAction = onOpenSearch,
                         )
+                    }
+                    if (state.loading) {
+                        item {
+                            LinearProgressIndicator(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        horizontal = Spacing.gutter,
+                                        vertical = Spacing.xs,
+                                    ),
+                            )
+                        }
                     }
                     items(state.popular, key = { it.id }) { work ->
                         WorkCard(

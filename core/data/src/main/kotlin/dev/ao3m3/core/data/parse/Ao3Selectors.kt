@@ -36,6 +36,13 @@ object Ao3Selectors {
     const val BLURB_FREEFORMS = ".tags li.freeforms a.tag"
     const val BLURB_FANDOMS = ".tags li.fandoms a.tag"
     const val BLURB_CATEGORIES = ".tags li.category a.tag"
+
+    /**
+     * Required-tag symbols. A live blurb carries its Category (F/F, F/M, Gen, …) here and nowhere
+     * else — [BLURB_CATEGORIES] is only a fallback for pages that list it as a tag.
+     */
+    const val BLURB_REQUIRED_TAGS = "ul.required-tags"
+    const val BLURB_CATEGORY_SYMBOLS = "span[class^=category-]"
     const val BLURB_RATING = "span[class^=rating-]"
 
     // --- Work page ---
@@ -44,9 +51,17 @@ object Ao3Selectors {
     val WORK_SUMMARY: List<String> = listOf("div.summary blockquote.userstuff", ".summary .userstuff")
     val WORK_NOTES: List<String> = listOf(".preface .notes blockquote.userstuff", ".notes .userstuff")
     val WORK_STATS: List<String> = listOf("dl.stats", ".stats")
+    /**
+     * AO3's work page lists its chapters in a `<select>` inside `#chapter_index`, one `<option>`
+     * per chapter (`<option value="chapterId">1. Title</option>`). There is no per-chapter link
+     * list on that page — the `<ol>` only exists on the full-page index.
+     */
+    const val WORK_CHAPTER_OPTIONS = "#chapter_index select[name=selected_id] option"
+
+    /** Full-page index (/works/:id/navigate), and older markup: one link per chapter. */
     val WORK_CHAPTER_TOC: List<String> = listOf(
         "ol.chapter.index.group li a",
-        ".chapter.index.group li a",
+        "#chapter_index ol li a",
     )
 
     const val WORK_FANDOMS = "dd.fandoms a.tag, dd.fandom a.tag"
@@ -82,4 +97,8 @@ object Ao3Selectors {
 
     // --- Forms ---
     const val AUTHENTICITY_TOKEN = "input[name=authenticity_token]"
+    const val CSRF_META = "meta[name=csrf-token]"
+
+    /** The inline bookmark form on a work page, and on /works/:id/bookmarks/new. */
+    const val BOOKMARK_FORM = "#bookmark-form"
 }

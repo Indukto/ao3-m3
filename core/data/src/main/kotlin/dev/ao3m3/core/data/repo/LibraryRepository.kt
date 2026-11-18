@@ -47,7 +47,7 @@ class LibraryRepository @Inject constructor(
         val existing = dao.libraryEntry(workId, kind)
         if (existing != null) {
             dao.deleteLibrary(workId, kind)
-            val remote = remoteToggle(workId, kind, subscribe = false)
+            val remote = remoteToggle(workId, kind, on = false)
             if (remote.isFailure) {
                 dao.upsertLibrary(existing)
                 return Result.failure(remote.exceptionOrNull()!!)
@@ -56,7 +56,7 @@ class LibraryRepository @Inject constructor(
         }
 
         dao.upsertLibrary(LibraryEntity(workId, kind, System.currentTimeMillis(), pendingSync = true))
-        val remote = remoteToggle(workId, kind, subscribe = true)
+        val remote = remoteToggle(workId, kind, on = true)
         if (remote.isFailure) {
             dao.deleteLibrary(workId, kind)
             return Result.failure(remote.exceptionOrNull()!!)
@@ -129,23 +129,17 @@ class LibraryRepository @Inject constructor(
     private suspend fun remoteToggle(
         workId: Long,
         kind: LibraryKind,
-        subscribe: Boolean,
+        on: Boolean,
     ): Result<Unit> {
         if (!client.hasSession()) {
             return Result.failure(Ao3Exception.Unauthorized())
         }
-        val result = when (kind) {
-            LibraryKind.MARKED_FOR_LATER -> actions.setMarkedForLater(workId)
+        return when (kind) {
+            LibraryKind.MARKED_FOR_LATER -> actions.setMarkedForLater(workId, marked = on)
             LibraryKind.SUBSCRIPTIONS -> actions.setSubscribed(workId)
-            LibraryKind.BOOKMARKS -> if (subscribe) {
-                actions.createBookmark(workId, notes = "")
-            } else {
-                Result.success(Unit)
-            }
-
+            LibraryKind.BOOKMARKS -> actions.setBookmarked(workId, bookmarked = on)
             LibraryKind.HISTORY -> Result.success(Unit)
         }
-        return result
     }
 }
 
