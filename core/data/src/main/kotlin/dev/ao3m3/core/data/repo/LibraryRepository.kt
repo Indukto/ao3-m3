@@ -12,9 +12,11 @@ import dev.ao3m3.core.data.parse.LibraryParser
 import dev.ao3m3.core.data.prefs.UserPrefs
 import dev.ao3m3.core.model.LibraryKind
 import dev.ao3m3.core.model.Work
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -98,7 +100,9 @@ class LibraryRepository @Inject constructor(
                 emptyList()
             }
             val document = client.getHtml(path, query)
-            val works = LibraryParser.parse(document)
+            val (works, morePages) = withContext(Dispatchers.Default) {
+                LibraryParser.parse(document) to LibraryParser.hasNextPage(document)
+            }
             dao.upsertWorks(works.map { it.toEntity() })
             val now = System.currentTimeMillis()
             works.forEachIndexed { index, work ->
@@ -116,7 +120,7 @@ class LibraryRepository @Inject constructor(
             libraryEntriesToPrune(
                 listed = works.map { it.id }.toSet(),
                 cached = dao.libraryWorkIds(kind),
-                morePagesExist = LibraryParser.hasNextPage(document),
+                morePagesExist = morePages,
             ).forEach { dao.deleteLibrary(it, kind) }
         }
     }

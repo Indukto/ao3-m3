@@ -67,7 +67,7 @@ fun Ao3App() {
 
     val destinations = listOf(
         TopLevelDestination(DiscoverRoute, "Discover", Ao3Icons.Discover),
-        TopLevelDestination(SearchRoute, "Search", Ao3Icons.Search),
+        TopLevelDestination(SearchRoute(), "Search", Ao3Icons.Search),
         TopLevelDestination(LibraryRoute, "Library", Ao3Icons.Library),
     )
     val showBar = destinations.any { destination ->
@@ -121,12 +121,18 @@ fun Ao3App() {
                         },
                     )
                 }
-                composable<SearchRoute> {
-                    SearchScreen(onOpenWork = { navController.navigate(WorkRoute(it)) })
+                composable<SearchRoute> { entry ->
+                    SearchScreen(
+                        onOpenWork = { navController.navigate(WorkRoute(it)) },
+                        initialFandom = entry.toRoute<SearchRoute>().fandom,
+                    )
                 }
                 composable<LibraryRoute> {
                     LibraryScreen(
                         onOpenWork = { navController.navigate(WorkRoute(it)) },
+                        onOpenReader = { workId, chapterId ->
+                            navController.navigate(ReaderRoute(workId, chapterId))
+                        },
                         onLogin = { navController.navigate(LoginRoute) },
                     )
                 }
@@ -137,6 +143,9 @@ fun Ao3App() {
                         onBack = { navController.popBackStack() },
                         onRead = { chapterId ->
                             navController.navigate(ReaderRoute(route.workId, chapterId))
+                        },
+                        onOpenFandom = { fandom ->
+                            navController.navigate(SearchRoute(fandom = fandom))
                         },
                     )
                 }

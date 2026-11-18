@@ -39,7 +39,9 @@ fun SectionTitle(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            // One rank below a work title (titleLarge in WorkCard): sections label content,
+            // they should not read as peers of it.
+            style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
         if (actionLabel != null && onAction != null) {

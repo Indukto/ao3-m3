@@ -1,6 +1,8 @@
 package dev.ao3m3.feature.work
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -16,12 +18,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonGroup
-import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.ao3m3.core.designsystem.component.ErrorState
 import dev.ao3m3.core.designsystem.component.MaintenanceBanner
 import dev.ao3m3.core.designsystem.component.SectionTitle
+import dev.ao3m3.core.designsystem.component.TagPill
 import dev.ao3m3.core.designsystem.component.SkeletonList
 import dev.ao3m3.core.designsystem.icon.Ao3Icons
 import dev.ao3m3.core.designsystem.theme.Ao3Theme
@@ -66,6 +69,7 @@ fun WorkScreen(
     workId: Long,
     onBack: () -> Unit,
     onRead: (Long) -> Unit,
+    onOpenFandom: (String) -> Unit,
     viewModel: WorkViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -159,6 +163,14 @@ fun WorkScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                            }
+                        }
+                    }
+
+                    if (work.fandoms.isNotEmpty()) {
+                        item {
+                            SectionBlock(title = "Fandom") {
+                                FandomChips(fandoms = work.fandoms, onOpen = onOpenFandom)
                             }
                         }
                     }
@@ -258,25 +270,30 @@ private fun WorkHeader(
         )
 
         Spacer(Modifier.height(Spacing.md))
-        ButtonGroup(
-            overflowIndicator = { menuState ->
-                ButtonGroupDefaults.OverflowIndicator(menuState = menuState)
-            },
-            expandedRatio = 0.1f,
+        // Spaced chips rather than a segmented ButtonGroup: the group welded the three labels
+        // together and pushed the third into an overflow "…" on narrow screens.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            clickableItem(
+            FilterChip(
+                selected = bookmarked,
                 onClick = { onToggle(LibraryKind.BOOKMARKS) },
-                label = if (bookmarked) "Bookmarked" else "Bookmark",
+                label = { Text(if (bookmarked) "Bookmarked" else "Bookmark") },
                 enabled = loggedIn,
             )
-            clickableItem(
+            FilterChip(
+                selected = markedForLater,
                 onClick = { onToggle(LibraryKind.MARKED_FOR_LATER) },
-                label = if (markedForLater) "Saved for later" else "Mark for later",
+                label = { Text(if (markedForLater) "Saved for later" else "Mark for later") },
                 enabled = loggedIn,
             )
-            clickableItem(
+            FilterChip(
+                selected = subscribed,
                 onClick = { onToggle(LibraryKind.SUBSCRIPTIONS) },
-                label = if (subscribed) "Subscribed" else "Subscribe",
+                label = { Text(if (subscribed) "Subscribed" else "Subscribe") },
                 enabled = loggedIn,
             )
         }
@@ -287,6 +304,30 @@ private fun WorkHeader(
                 text = work.summary,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+/** Fandom chips are the way into a fandom: one tap opens its works in Search. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FandomChips(fandoms: List<String>, onOpen: (String) -> Unit) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        fandoms.forEach { fandom ->
+            AssistChip(
+                onClick = { onOpen(fandom) },
+                label = { Text(fandom, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Ao3Icons.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
             )
         }
     }
@@ -355,21 +396,6 @@ private fun TagSections(work: Work) {
         ) {
             Text("Show fewer tags")
         }
-    }
-}
-
-@Composable
-private fun TagPill(text: String) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = Spacing.md, vertical = 6.dp),
-        )
     }
 }
 

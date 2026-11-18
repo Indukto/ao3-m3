@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +28,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -37,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,11 +72,19 @@ import dev.ao3m3.core.model.SortOption
 @Composable
 fun SearchScreen(
     onOpenWork: (Long) -> Unit,
+    initialFandom: String? = null,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
     val savedSearches by viewModel.savedSearches.collectAsStateWithLifecycle()
+    val savedFandoms by viewModel.savedFandoms.collectAsStateWithLifecycle()
+    val fandomSuggestions by viewModel.fandomSuggestions.collectAsStateWithLifecycle()
     val results = viewModel.results.collectAsLazyPagingItems()
+
+    // Arriving from a work's fandom chip: search that fandom straight away.
+    LaunchedEffect(initialFandom) {
+        if (!initialFandom.isNullOrBlank()) viewModel.searchFandom(initialFandom)
+    }
 
     var text by rememberSaveable { mutableStateOf(query.query) }
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
@@ -146,11 +157,57 @@ fun SearchScreen(
                 )
             }
 
+            // Saved fandoms: one tap searches that fandom, the X forgets it. Applying a fandom
+            // filter in the sheet adds it here, so saving never needs its own dialog.
+            if (savedFandoms.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(
+                        start = Spacing.gutter,
+                        end = Spacing.gutter,
+                        top = Spacing.xs,
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    items(savedFandoms, key = { it }) { fandom ->
+                        InputChip(
+                            selected = query.filters.fandom.equals(fandom, ignoreCase = true),
+                            onClick = { viewModel.searchFandom(fandom) },
+                            label = {
+                                Text(
+                                    text = fandom,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Ao3Icons.Close,
+                                    contentDescription = "Remove saved fandom $fandom",
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clickable { viewModel.removeFandom(fandom) },
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
             if (maintenance) {
                 MaintenanceBanner(message = "The Archive is offline. Showing saved results.")
             }
 
+            val idle = query.query.isBlank() && query.filters.isEmpty
             when {
+                // Nothing searched yet: show the prompt instead of a skeleton that implies the
+                // first page is on its way.
+                idle -> EmptyState(
+                    icon = Ao3Icons.Search,
+                    title = "Find something to read",
+                    message = "Search by title, author, fandom or tag.",
+                )
+
                 refresh is LoadState.Loading && results.itemCount == 0 -> SkeletonList(rows = 5)
 
                 refresh is LoadState.Error && results.itemCount == 0 -> {
@@ -166,16 +223,8 @@ fun SearchScreen(
                 results.itemCount == 0 && refresh is LoadState.NotLoading -> {
                     EmptyState(
                         icon = Ao3Icons.Search,
-                        title = if (query.query.isBlank() && query.filters.isEmpty) {
-                            "Find something to read"
-                        } else {
-                            "No works found"
-                        },
-                        message = if (query.query.isBlank() && query.filters.isEmpty) {
-                            "Search by title, author, fandom or tag."
-                        } else {
-                            "Try a broader tag or fewer filters."
-                        },
+                        title = "No works found",
+                        message = "Try a broader tag or fewer filters.",
                     )
                 }
 
@@ -184,7 +233,10 @@ fun SearchScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(top = Spacing.sm, bottom = Spacing.md),
                     ) {
-                        items(count = results.itemCount) { index ->
+                        items(
+                            count = results.itemCount,
+                            key = { index -> results.peek(index)?.id ?: index },
+                        ) { index ->
                             results[index]?.let { work ->
                                 WorkCard(
                                     work = work,
@@ -214,6 +266,9 @@ fun SearchScreen(
     if (filtersOpen) {
         FilterSheet(
             initial = query.filters,
+            suggestions = fandomSuggestions,
+            onFandomInput = viewModel::suggestFandoms,
+            onSaveFandom = viewModel::saveFandom,
             onDismiss = { filtersOpen = false },
             onApply = {
                 viewModel.applyFilters(it)
@@ -335,10 +390,14 @@ private fun SavedSearchesSheet(
 @Composable
 private fun FilterSheet(
     initial: SearchFilters,
+    suggestions: List<String>,
+    onFandomInput: (String) -> Unit,
+    onSaveFandom: (String) -> Unit,
     onDismiss: () -> Unit,
     onApply: (SearchFilters) -> Unit,
 ) {
     var fandom by remember { mutableStateOf(initial.fandom) }
+    var savedFandom by remember { mutableStateOf<String?>(null) }
     var relationship by remember { mutableStateOf(initial.relationship) }
     var character by remember { mutableStateOf(initial.character) }
     var otherTags by remember { mutableStateOf(initial.otherTags) }
@@ -347,9 +406,11 @@ private fun FilterSheet(
     var completeOnly by remember { mutableStateOf(initial.completeOnly) }
     var singleChapter by remember { mutableStateOf(initial.singleChapterOnly) }
     var noCrossovers by remember { mutableStateOf(initial.excludeCrossovers) }
-    val ratings = remember { initial.rating.toMutableSet() }
-    val warnings = remember { initial.warnings.toMutableSet() }
-    val categories = remember { initial.categories.toMutableSet() }
+    // Compose state, not a mutable set: mutating a MutableSet in place never triggers a
+    // recomposition, which is why the chips only appeared to toggle after Apply.
+    var ratings by remember { mutableStateOf(initial.rating) }
+    var warnings by remember { mutableStateOf(initial.warnings) }
+    var categories by remember { mutableStateOf(initial.categories) }
     val invalidRange = minWords.toIntOrNull()?.let { min ->
         maxWords.toIntOrNull()?.let { max -> min > max }
     } ?: false
@@ -369,9 +430,9 @@ private fun FilterSheet(
                         completeOnly = false
                         singleChapter = false
                         noCrossovers = false
-                        ratings.clear()
-                        warnings.clear()
-                        categories.clear()
+                        ratings = emptySet()
+                        warnings = emptySet()
+                        categories = emptySet()
                     },
                 ) { Text("Reset") }
                 Spacer(Modifier.weight(1f))
@@ -379,9 +440,9 @@ private fun FilterSheet(
                     onClick = {
                         onApply(
                             SearchFilters(
-                                rating = ratings.toSet(),
-                                warnings = warnings.toSet(),
-                                categories = categories.toSet(),
+                                rating = ratings,
+                                warnings = warnings,
+                                categories = categories,
                                 fandom = fandom,
                                 relationship = relationship,
                                 character = character,
@@ -403,7 +464,7 @@ private fun FilterSheet(
                 SearchFilters.RATING_IDS.forEach { (id, label) ->
                     FilterChip(
                         selected = id in ratings,
-                        onClick = { if (id in ratings) ratings.remove(id) else ratings.add(id) },
+                        onClick = { ratings = if (id in ratings) ratings - id else ratings + id },
                         label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     )
                 }
@@ -415,7 +476,7 @@ private fun FilterSheet(
                 SearchFilters.WARNING_IDS.forEach { (id, label) ->
                     FilterChip(
                         selected = id in warnings,
-                        onClick = { if (id in warnings) warnings.remove(id) else warnings.add(id) },
+                        onClick = { warnings = if (id in warnings) warnings - id else warnings + id },
                         label = { Text(label) },
                     )
                 }
@@ -428,7 +489,7 @@ private fun FilterSheet(
                     FilterChip(
                         selected = id in categories,
                         onClick = {
-                            if (id in categories) categories.remove(id) else categories.add(id)
+                            categories = if (id in categories) categories - id else categories + id
                         },
                         label = { Text(label) },
                     )
@@ -436,7 +497,66 @@ private fun FilterSheet(
             }
 
             Spacer(Modifier.height(Spacing.md))
-            FilterField("Fandom", fandom) { fandom = it }
+            FilterField(
+                label = "Fandom",
+                value = fandom,
+                supporting = "Type a name, tap a suggestion, then save it as a chip.",
+            ) { typed ->
+                fandom = typed
+                if (!typed.equals(savedFandom, ignoreCase = true)) savedFandom = null
+                onFandomInput(typed)
+            }
+
+            // AO3's own tag autocomplete, so nobody has to spell a fandom exactly.
+            if (suggestions.isNotEmpty() && suggestions.none { it.equals(fandom, ignoreCase = true) }) {
+                Column(modifier = Modifier.padding(bottom = Spacing.xs)) {
+                    suggestions.take(6).forEach { suggestion ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    fandom = suggestion
+                                    savedFandom = null
+                                    onFandomInput(suggestion)
+                                }
+                                .padding(vertical = Spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Ao3Icons.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(Spacing.sm))
+                            Text(
+                                text = suggestion,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+
+            val saved = savedFandom?.equals(fandom.trim(), ignoreCase = true) == true
+            TextButton(
+                onClick = {
+                    onSaveFandom(fandom)
+                    savedFandom = fandom.trim()
+                },
+                enabled = fandom.isNotBlank() && !saved,
+            ) {
+                Icon(
+                    imageVector = if (saved) Ao3Icons.Check else Ao3Icons.BookmarkOutline,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(Spacing.xs))
+                Text(if (saved) "Saved to your fandoms" else "Save fandom")
+            }
+
             FilterField("Relationship", relationship) { relationship = it }
             FilterField("Character", character) { character = it }
             FilterField("Other tags", otherTags) { otherTags = it }
@@ -480,11 +600,21 @@ private fun FilterSheet(
 }
 
 @Composable
-private fun FilterField(label: String, value: String, onChange: (String) -> Unit) {
+private fun FilterField(
+    label: String,
+    value: String,
+    supporting: String? = null,
+    onChange: (String) -> Unit,
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
+        supportingText = if (supporting != null) {
+            { Text(supporting, style = MaterialTheme.typography.bodySmall) }
+        } else {
+            null
+        },
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = Spacing.sm),

@@ -5,8 +5,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 data object DiscoverRoute
 
+/** [fandom] pre-filters the search, e.g. when opened by tapping a fandom on a work. */
 @Serializable
-data object SearchRoute
+data class SearchRoute(val fandom: String? = null)
 
 @Serializable
 data object LibraryRoute

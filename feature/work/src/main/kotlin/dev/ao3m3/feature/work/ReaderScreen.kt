@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -51,12 +52,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.ao3m3.core.designsystem.component.ErrorState
@@ -65,6 +69,8 @@ import dev.ao3m3.core.designsystem.component.SheetLayout
 import dev.ao3m3.core.designsystem.icon.Ao3Icons
 import dev.ao3m3.core.designsystem.theme.ReaderDarkBackground
 import dev.ao3m3.core.designsystem.theme.ReaderDarkOnBackground
+import dev.ao3m3.core.designsystem.theme.ReaderLightBackground
+import dev.ao3m3.core.designsystem.theme.ReaderLightOnBackground
 import dev.ao3m3.core.designsystem.theme.SepiaBackground
 import dev.ao3m3.core.designsystem.theme.SepiaOnBackground
 import dev.ao3m3.core.designsystem.theme.Spacing
@@ -91,8 +97,9 @@ fun ReaderScreen(
     val listState = rememberLazyListState()
     var toolbarVisible by rememberSaveable { mutableStateOf(false) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
-    var progress by remember { mutableFloatStateOf(0f) }
-    val latestProgress by rememberUpdatedState(progress)
+    // A State object rather than a `var ... by` delegate: scrolling writes it every frame, and
+    // nothing reads it during composition, so it never recomposes the reader.
+    val progressState = remember { mutableFloatStateOf(0f) }
     val showHint by rememberUpdatedState(state.showControlsHint)
 
     val view = LocalView.current
@@ -102,7 +109,7 @@ fun ReaderScreen(
     }
 
     LaunchedEffect(listState, state.index) {
-        snapshotFlow { listState.scrollFraction() }.collect { progress = it }
+        snapshotFlow { listState.scrollFraction() }.collect { progressState.floatValue = it }
     }
 
     // Restore saved progress in the chapter it belongs to; every other chapter opens at the top.
@@ -119,7 +126,7 @@ fun ReaderScreen(
     }
 
     DisposableEffect(Unit) {
-        onDispose { viewModel.saveProgress(latestProgress) }
+        onDispose { viewModel.saveProgress(progressState.floatValue) }
     }
 
     val textStyle = TextStyle(
@@ -131,9 +138,17 @@ fun ReaderScreen(
     )
 
     val linkColor = MaterialTheme.colorScheme.primary
-    val blocks = remember(state.text?.html, colors.content, linkColor) {
-        state.text?.html?.let { html ->
-            renderChapterBlocks(html, linkColor, colors.content)
+    // Parsing a long chapter into blocks is CPU work; keeping it off the composition thread is
+    // what stops the visible freeze when a chapter opens.
+    val chapterHtml = state.text?.html
+    val blocks by produceState(
+        initialValue = emptyList<AnnotatedString>(),
+        chapterHtml,
+        colors.content,
+        linkColor,
+    ) {
+        value = chapterHtml?.let { html ->
+            withContext(Dispatchers.Default) { renderChapterBlocks(html, linkColor, colors.content) }
         }.orEmpty()
     }
 
@@ -251,14 +266,13 @@ fun ReaderScreen(
                     trackColor = colors.background,
                 )
             } else {
-                LinearProgressIndicator(
-                    progress = { progress },
+                ReadProgressBar(
+                    progress = { progressState.floatValue },
+                    trackColor = colors.background,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(2.dp)
                         .align(Alignment.TopCenter),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = colors.background,
                 )
             }
 
@@ -332,6 +346,24 @@ fun ReaderScreen(
     }
 }
 
+/**
+ * Scroll progress. The value is read inside this composable only, so a scrolling reader redraws
+ * this two-pixel bar instead of recomposing the whole screen.
+ */
+@Composable
+private fun ReadProgressBar(
+    progress: () -> Float,
+    trackColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    LinearProgressIndicator(
+        progress = progress,
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.primary,
+        trackColor = trackColor,
+    )
+}
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ReaderLoading(colors: ReaderColors) {
@@ -347,7 +379,7 @@ private fun readerColors(theme: ReadingTheme): ReaderColors = when (theme) {
         MaterialTheme.colorScheme.onSurface,
     )
 
-    ReadingTheme.LIGHT -> ReaderColors(Color(0xFFFFFBF8), Color(0xFF1B1B1B))
+    ReadingTheme.LIGHT -> ReaderColors(ReaderLightBackground, ReaderLightOnBackground)
     ReadingTheme.SEPIA -> ReaderColors(SepiaBackground, SepiaOnBackground)
     ReadingTheme.DARK -> ReaderColors(ReaderDarkBackground, ReaderDarkOnBackground)
 }

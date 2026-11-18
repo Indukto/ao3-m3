@@ -19,10 +19,23 @@ import dev.ao3m3.core.model.ReadingProgress
 import dev.ao3m3.core.model.Work
 import dev.ao3m3.core.model.WorkQuery
 import dev.ao3m3.core.model.WorkWithChapters
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+
+@Serializable
+private data class AutocompleteTag(val id: String = "", val name: String = "")
+
+private val suggestionJson = Json { ignoreUnknownKeys = true }
+private const val MIN_SUGGESTION_CHARS = 3
+private const val MAX_SUGGESTIONS = 8
+private const val MAX_CACHED_TERMS = 60
 
 data class PageResult(
     val works: List<Work>,
@@ -41,6 +54,7 @@ class WorkRepository @Inject constructor(
     private val client: Ao3Client,
     private val dao: Ao3Dao,
 ) {
+    private val suggestionCache = ConcurrentHashMap<String, List<String>>()
 
     fun observeWork(id: Long): Flow<Work?> =
         dao.observeWork(id).map { entity -> entity?.toModel() }
@@ -53,9 +67,39 @@ class WorkRepository @Inject constructor(
     suspend fun cachedChapterText(chapterId: Long): ChapterText? =
         dao.chapterText(chapterId)?.toModel()
 
+    /**
+     * Fandom suggestions from AO3's tag autocomplete. The caller debounces; results are cached per
+     * term because every request costs the client's politeness gap.
+     */
+    suspend fun fandomSuggestions(term: String): List<String> {
+        val value = term.trim()
+        if (value.length < MIN_SUGGESTION_CHARS) return emptyList()
+        val key = value.lowercase()
+        suggestionCache[key]?.let { return it }
+        val names = runCatching {
+            val body = client.getText(
+                Ao3Urls.autocomplete("fandom"),
+                query = listOf("term" to value),
+                accept = Ao3Urls.JSON_ACCEPT,
+            )
+            withContext(Dispatchers.Default) {
+                suggestionJson.decodeFromString<List<AutocompleteTag>>(body)
+                    .map { it.name }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .take(MAX_SUGGESTIONS)
+            }
+        }.getOrDefault(emptyList())
+        if (names.isNotEmpty()) {
+            if (suggestionCache.size > MAX_CACHED_TERMS) suggestionCache.clear()
+            suggestionCache[key] = names
+        }
+        return names
+    }
+
     suspend fun refreshWork(workId: Long): Result<WorkWithChapters> = runCatching {
         val document = client.getHtml(Ao3Urls.workPage(workId))
-        val parsed = WorkParser.parse(document, workId)
+        val parsed = withContext(Dispatchers.Default) { WorkParser.parse(document, workId) }
         val chapters = if (parsed.hasUsableIndex()) {
             parsed.chapters
         } else {
@@ -78,7 +122,8 @@ class WorkRepository @Inject constructor(
             )
 
     private suspend fun chapterIndex(workId: Long): List<Chapter>? = runCatching {
-        WorkParser.parseChapterIndex(client.getHtml(Ao3Urls.navigate(workId)), workId)
+        val document = client.getHtml(Ao3Urls.navigate(workId))
+        withContext(Dispatchers.Default) { WorkParser.parseChapterIndex(document, workId) }
     }.getOrNull()?.takeIf { it.isNotEmpty() }
 
     /**
@@ -125,8 +170,9 @@ class WorkRepository @Inject constructor(
                 query.useSearchEndpoint -> client.getHtml(Ao3Urls.search(), params)
                 else -> client.getHtml(Ao3Urls.browse(), params)
             }
-            val works = BlurbParser.parse(document)
-            val hasNext = BlurbParser.hasNextPage(document)
+            val (works, hasNext) = withContext(Dispatchers.Default) {
+                BlurbParser.parse(document) to BlurbParser.hasNextPage(document)
+            }
             dao.upsertWorks(works.map { it.toEntity() })
             dao.cachePage(
                 page = PageEntity(cacheKey, System.currentTimeMillis(), hasNext),
@@ -146,6 +192,14 @@ class WorkRepository @Inject constructor(
             )
         }
     }
+
+    /** Works with reading progress, most recent first. Local only, so it needs no account. */
+    fun observeReading(limit: Int = 50): Flow<List<ProgressWithWork>> =
+        dao.observeRecentProgress(limit).map { rows ->
+            rows.mapNotNull { row ->
+                row.work?.let { ProgressWithWork(row.progress.toModel(), it.toModel()) }
+            }
+        }
 
     suspend fun recentProgress(limit: Int = 6): List<ProgressWithWork> =
         dao.recentProgressRows(limit).mapNotNull { row ->

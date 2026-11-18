@@ -25,7 +25,9 @@ sealed class Ao3Exception(message: String, cause: Throwable? = null) : Exception
     class Network(cause: Throwable) : Ao3Exception("Couldn't reach the Archive.", cause)
 
     /** AO3 markup changed under us. */
-    class Parse(detail: String) : Ao3Exception("Couldn't read the Archive's page ($detail).")
+    /** [detail] stays available for logs; the message the UI shows stays plain. */
+    class Parse(val detail: String) :
+        Ao3Exception("Couldn't read that page — AO3 may have changed it.")
 
     fun userMessage(): String = message ?: "Something went wrong."
 }

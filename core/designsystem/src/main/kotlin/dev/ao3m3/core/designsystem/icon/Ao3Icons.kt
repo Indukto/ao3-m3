@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.CollectionsBookmark
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
@@ -28,20 +29,23 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.List
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /** Rounded Material Symbols, matching the expressive shape language. */
 object Ao3Icons {
     val Discover: ImageVector = Icons.Rounded.Home
     val Search: ImageVector = Icons.Rounded.Search
-    val Library: ImageVector = Icons.Rounded.Bookmark
+    // Deliberately different glyphs: the Library tab, a saved work and the later list are three
+    // different ideas and used to share two icons.
+    val Library: ImageVector = Icons.Rounded.CollectionsBookmark
     val Settings: ImageVector = Icons.Rounded.Settings
     val Add: ImageVector = Icons.Rounded.Add
     val Back: ImageVector = Icons.Rounded.ArrowBack
     val OpenLink: ImageVector = Icons.Rounded.Link
     val Bookmark: ImageVector = Icons.Rounded.Bookmark
     val BookmarkOutline: ImageVector = Icons.Rounded.BookmarkBorder
-    val MarkedForLater: ImageVector = Icons.Rounded.History
+    val MarkedForLater: ImageVector = Icons.Rounded.Schedule
     val Subscriptions: ImageVector = Icons.Rounded.Notifications
     val History: ImageVector = Icons.Rounded.History
     val Read: ImageVector = Icons.Rounded.MenuBook

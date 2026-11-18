@@ -14,18 +14,21 @@ import dev.ao3m3.core.model.SortOption
 import dev.ao3m3.core.model.Work
 import dev.ao3m3.core.model.WorkQuery
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val works: WorkRepository,
@@ -40,6 +43,24 @@ class SearchViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
     )
+
+    val savedFandoms: StateFlow<List<String>> = session.savedFandoms.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    private val fandomTerm = MutableStateFlow("")
+
+    /** Debounced fandom names for the filter sheet; empty until three characters are typed. */
+    val fandomSuggestions: StateFlow<List<String>> = fandomTerm
+        .debounce(SUGGESTION_DEBOUNCE_MS)
+        .mapLatest { works.fandomSuggestions(it) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList(),
+        )
 
     val results = _query
         .flatMapLatest { request ->
@@ -81,6 +102,31 @@ class SearchViewModel @Inject constructor(
 
     fun removeSavedSearch(term: String) {
         viewModelScope.launch { session.removeSearch(term) }
+    }
+
+    /** One tap on a saved fandom: filter by it, keeping any free-text terms already typed. */
+    fun searchFandom(name: String) {
+        val value = name.trim()
+        if (value.isEmpty()) return
+        _query.update { it.copy(filters = it.filters.copy(fandom = value), page = 1) }
+    }
+
+    fun saveFandom(name: String) {
+        val value = name.trim()
+        if (value.isEmpty()) return
+        viewModelScope.launch { session.saveFandom(value) }
+    }
+
+    fun removeFandom(name: String) {
+        viewModelScope.launch { session.removeFandom(name) }
+    }
+
+    fun suggestFandoms(term: String) {
+        fandomTerm.value = term
+    }
+
+    private companion object {
+        const val SUGGESTION_DEBOUNCE_MS = 400L
     }
 }
 

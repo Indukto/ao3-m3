@@ -57,17 +57,21 @@ class Ao3Client @Inject constructor(
         val url = baseUrlBuilder(path).apply {
             params.forEach { (key, value) -> addQueryParameter(key, value) }
         }.build()
-        return Ksoup.parse(execute(Request.Builder().url(url).get()))
+        val body = execute(Request.Builder().url(url).get())
+        // Parsing a work or index page is CPU work. Doing it on the caller's dispatcher put it on
+        // the main thread for viewModelScope and made opening lists and works stutter.
+        return withContext(Dispatchers.Default) { Ksoup.parse(body) }
     }
 
     suspend fun getText(
         path: List<String>,
         query: List<Pair<String, String>> = emptyList(),
+        accept: String = HTML_ACCEPT,
     ): String {
         val url = baseUrlBuilder(path).apply {
             query.forEach { (key, value) -> addQueryParameter(key, value) }
         }.build()
-        return execute(Request.Builder().url(url).get())
+        return execute(Request.Builder().url(url).get(), accept)
     }
 
     /** Posts an AO3 form field-for-field, the way its own HTML form would. */
@@ -113,7 +117,10 @@ class Ao3Client @Inject constructor(
         }
     }
 
-    private suspend fun execute(builder: Request.Builder): String =
+    private suspend fun execute(
+        builder: Request.Builder,
+        accept: String = HTML_ACCEPT,
+    ): String =
         withContext(Dispatchers.IO) {
             var attempt = 0
             while (true) {
@@ -125,10 +132,7 @@ class Ao3Client @Inject constructor(
 
                 val request = builder
                     .header("User-Agent", Ao3Urls.USER_AGENT)
-                    .header(
-                        "Accept",
-                        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    )
+                    .header("Accept", accept)
                     .header("Accept-Language", "en-US,en;q=0.9")
                     .build()
 
@@ -186,6 +190,7 @@ class Ao3Client @Inject constructor(
     private fun String.urlEncode(): String = java.net.URLEncoder.encode(this, "UTF-8")
 
     private companion object {
+        const val HTML_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         const val MIN_INTERVAL_MS = 2_000L
         const val MAX_RETRIES = 2
         const val SESSION_COOKIE = "_otwarchive_session"

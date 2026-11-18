@@ -95,6 +95,10 @@ internal val ao3DarkScheme = darkColorScheme(
 val SepiaBackground = Color(0xFFF4ECD8)
 val SepiaOnBackground = Color(0xFF3B3125)
 
+/** Reader-only warm paper, used when the app is light and the reader is not sepia. */
+val ReaderLightBackground = Color(0xFFFFFBF8)
+val ReaderLightOnBackground = Color(0xFF1B1B1B)
+
 /** Reader-only dark paper, used when the app is light but the reader is dark. */
 val ReaderDarkBackground = Color(0xFF151312)
 val ReaderDarkOnBackground = Color(0xFFE6DEDC)

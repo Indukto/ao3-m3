@@ -31,6 +31,7 @@ class SessionRepository @Inject constructor(
     val onboardingDone: Flow<Boolean> = prefs.onboardingDone
     val readerHintDismissed: Flow<Boolean> = prefs.readerHintDismissed
     val savedSearches: Flow<List<String>> = prefs.savedSearches
+    val savedFandoms: Flow<List<String>> = prefs.savedFandoms
 
     suspend fun completeLogin(rawCookieHeader: String, userName: String?) {
         client.importWebViewCookies(rawCookieHeader)
@@ -65,6 +66,19 @@ class SessionRepository @Inject constructor(
         prefs.setSavedSearches(prefs.savedSearches.first().filterNot { it == query })
     }
 
+    /** Fandoms are remembered the same way as searches: newest first, de-duplicated, capped. */
+    suspend fun saveFandom(name: String) {
+        val value = name.trim()
+        if (value.isEmpty()) return
+        val current = prefs.savedFandoms.first()
+        if (current.any { it.equals(value, ignoreCase = true) }) return
+        prefs.setSavedFandoms((listOf(value) + current).take(MAX_SAVED_FANDOMS))
+    }
+
+    suspend fun removeFandom(name: String) {
+        prefs.setSavedFandoms(prefs.savedFandoms.first().filterNot { it == name })
+    }
+
     /** Re-reads the cookie store, e.g. after the WebView finished a login. */
     fun refreshState() {
         _loggedIn.value = client.hasSession()
@@ -72,5 +86,6 @@ class SessionRepository @Inject constructor(
 
     private companion object {
         const val MAX_SAVED_SEARCHES = 10
+        const val MAX_SAVED_FANDOMS = 12
     }
 }

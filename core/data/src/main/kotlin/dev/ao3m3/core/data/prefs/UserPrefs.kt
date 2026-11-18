@@ -54,6 +54,13 @@ class UserPrefs @Inject constructor(
             .orEmpty()
     }
 
+    /** Newest first; the search screen shows these as one-tap fandom chips. */
+    val savedFandoms: Flow<List<String>> = store.data.map { prefs ->
+        prefs[Keys.SAVED_FANDOMS]
+            ?.let { encoded -> runCatching { json.decodeFromString<List<String>>(encoded) }.getOrNull() }
+            .orEmpty()
+    }
+
     suspend fun setReadingSettings(settings: ReadingSettings) {
         store.edit { it[Keys.READING] = json.encodeToString(settings) }
     }
@@ -83,12 +90,17 @@ class UserPrefs @Inject constructor(
         store.edit { it[Keys.SAVED_SEARCHES] = json.encodeToString(values) }
     }
 
+    suspend fun setSavedFandoms(values: List<String>) {
+        store.edit { it[Keys.SAVED_FANDOMS] = json.encodeToString(values) }
+    }
+
     private object Keys {
         val READING = stringPreferencesKey("reading_settings")
         val DARK_THEME = stringPreferencesKey("dark_theme")
         val USER_NAME = stringPreferencesKey("user_name")
         val ONBOARDED = booleanPreferencesKey("onboarded")
         val SAVED_SEARCHES = stringPreferencesKey("saved_searches")
+        val SAVED_FANDOMS = stringPreferencesKey("saved_fandoms")
         val READER_HINT_DISMISSED = booleanPreferencesKey("reader_hint_dismissed")
     }
 }

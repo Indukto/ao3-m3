@@ -47,17 +47,18 @@ import dev.ao3m3.core.designsystem.component.SkeletonList
 import dev.ao3m3.core.designsystem.icon.Ao3Icons
 import dev.ao3m3.core.designsystem.theme.Spacing
 import dev.ao3m3.core.model.LibraryKind
-import dev.ao3m3.core.model.Work
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onOpenWork: (Long) -> Unit,
+    onOpenReader: (Long, Long) -> Unit,
     onLogin: () -> Unit,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val tab by viewModel.tab.collectAsStateWithLifecycle()
-    val works by viewModel.works.collectAsStateWithLifecycle()
+    val libraryItems by viewModel.items.collectAsStateWithLifecycle()
     val loggedIn by viewModel.loggedIn.collectAsStateWithLifecycle()
     val syncing by viewModel.syncing.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
@@ -71,7 +72,7 @@ fun LibraryScreen(
         }
     }
 
-    val selected = LibraryTab.entries.first { it.kind == tab }
+    val needsLogin = tab.needsLogin && !loggedIn
 
     Scaffold(
         topBar = {
@@ -80,7 +81,7 @@ fun LibraryScreen(
                 actions = {
                     IconButton(
                         onClick = viewModel::refresh,
-                        enabled = !syncing && loggedIn && tab != LibraryKind.HISTORY,
+                        enabled = !syncing && loggedIn && tab.needsLogin,
                     ) {
                         if (syncing) {
                             CircularProgressIndicator(
@@ -103,14 +104,14 @@ fun LibraryScreen(
                 .padding(top = innerPadding.calculateTopPadding()),
         ) {
             PrimaryScrollableTabRow(
-                selectedTabIndex = selected.ordinal,
+                selectedTabIndex = tab.ordinal,
                 edgePadding = Spacing.md,
                 containerColor = MaterialTheme.colorScheme.background,
             ) {
                 LibraryTab.entries.forEach { item ->
                     Tab(
-                        selected = item == selected,
-                        onClick = { viewModel.select(item.kind) },
+                        selected = item == tab,
+                        onClick = { viewModel.select(item) },
                         text = { Text(item.label) },
                     )
                 }
@@ -120,22 +121,21 @@ fun LibraryScreen(
                 MaintenanceBanner(message = "The Archive is offline — showing saved items.")
             }
 
-            if (!loggedIn && tab != LibraryKind.HISTORY && works.isNotEmpty()) {
+            if (needsLogin && libraryItems.isNotEmpty()) {
                 LoginPrompt(onLogin = onLogin)
             }
 
-            val needsLogin = !loggedIn && tab != LibraryKind.HISTORY
             when {
-                syncing && works.isEmpty() -> SkeletonList(rows = 5)
+                syncing && libraryItems.isEmpty() -> SkeletonList(rows = 5)
 
-                works.isEmpty() -> EmptyState(
-                    icon = if (needsLogin) Ao3Icons.Lock else selected.icon,
-                    title = if (needsLogin) "Sign in to sync" else selected.emptyTitle,
+                libraryItems.isEmpty() -> EmptyState(
+                    icon = if (needsLogin) Ao3Icons.Lock else tab.icon,
+                    title = if (needsLogin) "Sign in to sync" else tab.emptyTitle,
                     message = if (needsLogin) {
                         "Your saved lists sync from AO3 when you're signed in. " +
-                            "History stays on this device."
+                            "Reading and history stay on this device."
                     } else {
-                        selected.emptyMessage
+                        tab.emptyMessage
                     },
                     actionLabel = if (needsLogin) "Log in" else null,
                     onAction = if (needsLogin) onLogin else null,
@@ -149,8 +149,18 @@ fun LibraryScreen(
                         bottom = Spacing.lg,
                     ),
                 ) {
-                    items(works, key = { it.id }) { work ->
-                        LibraryRow(work = work, onClick = { onOpenWork(work.id) })
+                    items(libraryItems, key = { it.work.id }) { item ->
+                        LibraryRow(
+                            item = item,
+                            onClick = {
+                                val progress = item.progress
+                                if (progress != null) {
+                                    onOpenReader(item.work.id, progress.chapterId)
+                                } else {
+                                    onOpenWork(item.work.id)
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -174,7 +184,7 @@ private fun LoginPrompt(onLogin: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Sign in to sync", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    text = "Bookmarks, Later and Subscriptions update from AO3.",
+                    text = "Saved works and subscriptions update from AO3.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -186,7 +196,8 @@ private fun LoginPrompt(onLogin: () -> Unit) {
 }
 
 @Composable
-private fun LibraryRow(work: Work, onClick: () -> Unit) {
+private fun LibraryRow(item: LibraryItem, onClick: () -> Unit) {
+    val work = item.work
     Column {
         Row(
             modifier = Modifier
@@ -210,12 +221,20 @@ private fun LibraryRow(work: Work, onClick: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                work.chapterLabel?.let { chapters ->
+                val detail = item.progress?.let {
+                    "Chapter ${it.chapterIndex} · ${(it.scrollFraction * 100).roundToInt()}%"
+                } ?: item.source ?: work.chapterLabel
+                detail?.let { label ->
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        text = chapters,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        // Accent marks reading progress; a plain source label is metadata.
+                        color = if (item.progress != null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                 }
             }
@@ -233,39 +252,49 @@ private fun LibraryRow(work: Work, onClick: () -> Unit) {
     }
 }
 
-private enum class LibraryTab(
-    val kind: LibraryKind,
+/**
+ * Library tabs. Reading and History are this device's own record, so they work signed out; the
+ * AO3-synced lists need an account. [kind] is the single AO3 list a tab mirrors, or null when the
+ * tab is local or merges more than one list.
+ */
+enum class LibraryTab(
     val label: String,
     val icon: ImageVector,
+    val kind: LibraryKind?,
+    val needsLogin: Boolean,
     val emptyTitle: String,
     val emptyMessage: String,
 ) {
-    BOOKMARKS(
-        LibraryKind.BOOKMARKS,
-        "Bookmarks",
-        Ao3Icons.Bookmark,
-        "No bookmarks yet",
-        "Bookmark a work to keep it here.",
+    READING(
+        label = "Reading",
+        icon = Ao3Icons.Read,
+        kind = null,
+        needsLogin = false,
+        emptyTitle = "Nothing in progress",
+        emptyMessage = "Works you start reading appear here. No account needed.",
     ),
-    LATER(
-        LibraryKind.MARKED_FOR_LATER,
-        "Later",
-        Ao3Icons.BookmarkOutline,
-        "Nothing marked for later",
-        "Mark a work for later to keep it here.",
+    SAVED(
+        label = "Saved",
+        icon = Ao3Icons.Bookmark,
+        kind = null,
+        needsLogin = true,
+        emptyTitle = "Nothing saved yet",
+        emptyMessage = "Bookmarked and marked-for-later works appear here.",
     ),
     SUBSCRIPTIONS(
-        LibraryKind.SUBSCRIPTIONS,
-        "Subscriptions",
-        Ao3Icons.Subscriptions,
-        "No subscriptions yet",
-        "Subscribe to a work or author to see updates here.",
+        label = "Subscriptions",
+        icon = Ao3Icons.Subscriptions,
+        kind = LibraryKind.SUBSCRIPTIONS,
+        needsLogin = true,
+        emptyTitle = "No subscriptions yet",
+        emptyMessage = "Subscribe to a work or author to see updates here.",
     ),
     HISTORY(
-        LibraryKind.HISTORY,
-        "History",
-        Ao3Icons.History,
-        "No reading history yet",
-        "Works you read will appear here.",
+        label = "History",
+        icon = Ao3Icons.History,
+        kind = LibraryKind.HISTORY,
+        needsLogin = false,
+        emptyTitle = "No reading history yet",
+        emptyMessage = "Works you read will appear here.",
     ),
 }
