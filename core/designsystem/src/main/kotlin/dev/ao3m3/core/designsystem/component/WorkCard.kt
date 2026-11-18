@@ -214,8 +214,8 @@ private fun bypassLine(work: Work): String = buildString {
 }
 
 /**
- * A rating pill. Mature and Explicit are 18+ content, so they get the error colour with
- * full-contrast text instead of the neutral tint used for the other ratings.
+ * A rating pill. Mature and Explicit are 18+ content, so they keep the app's own palette but swap
+ * the muted container for the accent colour and its full-contrast text.
  */
 @Composable
 fun RatingPill(text: String, modifier: Modifier = Modifier) {
@@ -224,12 +224,12 @@ fun RatingPill(text: String, modifier: Modifier = Modifier) {
         text = text,
         modifier = modifier,
         color = if (mature) {
-            MaterialTheme.colorScheme.error
+            MaterialTheme.colorScheme.primary
         } else {
             MaterialTheme.colorScheme.secondaryContainer
         },
         contentColor = if (mature) {
-            MaterialTheme.colorScheme.onError
+            MaterialTheme.colorScheme.onPrimary
         } else {
             MaterialTheme.colorScheme.onSecondaryContainer
         },

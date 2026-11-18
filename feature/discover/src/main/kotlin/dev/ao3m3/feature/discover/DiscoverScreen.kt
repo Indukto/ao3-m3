@@ -71,9 +71,6 @@ fun DiscoverScreen(
                 title = { Text("Discover") },
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Ao3Icons.Settings, contentDescription = "Settings")
-                    }
                     Box {
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(Ao3Icons.More, contentDescription = "More actions")
@@ -103,6 +100,9 @@ fun DiscoverScreen(
                                 },
                             )
                         }
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Ao3Icons.Settings, contentDescription = "Settings")
                     }
                 },
             )
